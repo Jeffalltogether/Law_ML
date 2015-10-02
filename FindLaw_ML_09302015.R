@@ -8,8 +8,9 @@ library(tm)
 library(reshape2)
 library(ggplot2)
 library(plyr)
-library(MASS)
-library(caret)
+library(class)
+#library(MASS)
+#library(caret)
 
 setwd("C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_DataSet/FindLaw/9thAppeals")
 
@@ -166,48 +167,98 @@ commonWords <- which(opinionDF.commonTotals != "NA" & opinionDF.commonTotals >= 
 frequentWords <- which(opinionDF.freqTotals != "NA" & opinionDF.freqTotals >= length(class)/5)
 
 ### Remove Sparse Terms
-sparseWords <- which(opinionDF.freqTotals != "NA" & opinionDF.freqTotals <= 3)
+sparseWords <- which(opinionDF.freqTotals != "NA" & opinionDF.freqTotals <= 1)
 
 opinionDF.clean <- opinionDF[,-commonWords]
 opinionDF.clean <- opinionDF.clean[,-frequentWords]
 opinionDF.clean <- opinionDF.clean[,-sparseWords]
 
 rm(commonWords, frequentWords, sparseWords, opinionDF, opinionDF.commonTotals, opinionDF.freqTotals)
+
 ### Now let's apply some prediction
-### First, we will add the class label to each case
+### First, we will add the class label to each case and remove the case types 
+### that are not represented enought to train a classifier
 opinionDF.clean$cla55 <- class.abbreviations
 
 #   Now a quick check to see that the correct class was assigned to each case
 ifelse((rownames(categoryDF) == rownames(opinionDF.clean)) != TRUE,
         "case and class do not match", "case and class match")
 
+#   Here we can remove those under-represented classes
+class.toKeep <- c("CLPHC", "CLPN", "CLPS", "CrmnlLwPrcdrEv", "CrmnlLwPrcdrImL")
+opinionDF.clean <- opinionDF.clean[which(opinionDF.clean$cla55 %in% class.toKeep), ]
+
 
 ### Next, we will use the holdout method to generate our train and test set
 ###############https://www.youtube.com/watch?v=j1V2McKbkLo###################
+case.classes <- opinionDF.clean[,"cla55"]
+case.data.noClass <- opinionDF.clean[,-which(colnames(opinionDF.clean)=="cla55")]
 
-train.index <- sample(1:length(opinionDF.clean$cla55), 0.6*length(opinionDF.clean$cla55))
-opinionDF.clean$tra1n <- FALSE
-opinionDF.clean$tra1n[train.index] <- TRUE
+accuracy <- rep(1, 10)
+for (i in 1:10){
+        train.index <- sample(1:nrow(opinionDF.clean), 0.6*nrow(opinionDF.clean))
+        test.index <- (1:nrow(opinionDF.clean))[-train.index]
+        
+        knn.pred <- knn(case.data.noClass[train.index, ], case.data.noClass[test.index, ], case.classes[train.index])
+        
+        ### Accuracy
+        #   Confusion Matrix
+        
+        conf.mat <- table("Predictions" = knn.pred, Actual = case.classes[test.index])
+        print(conf.mat)
+        accuracy[i] <- sum(diag(conf.mat)) / length(test.index) *100
+}
+tenFoldCV <- mean(accuracy)
+tenFoldCV
 
-
-which(colnames(opinionDF.clean)=="cla55")
-which(colnames(opinionDF.clean)=="tra1n")
-
-### Now we will train an LDA
-#  First remove the Near Zero Variance Terms
+#  Next we can try after removig the Near Zero Variance Terms
 x <- nearZeroVar(opinionDF.clean, saveMetrics = TRUE)
 x <- as.data.frame(x)
 nonZeroVarWords <- rownames(x[x[,"nzv"] <=0, ])
+OpinionDF.nonZeroVar <- opinionDF.clean[,which(colnames(opinionDF.clean) %in% nonZeroVarWords)]
 
-OpinionDF.nonZeroVar<- opinionDF.clean[,nonZeroVarWords]
+case.classes <- OpinionDF.nonZeroVar[,"cla55"]
+case.data.noClass <- OpinionDF.nonZeroVar[,-which(colnames(OpinionDF.nonZeroVar)=="cla55")]
 
-# lda.cat <- lda(cla55 ~ ., nonZeroVarOpinionDF, prior = c(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)/15, train)
+accuracy <- rep(1, 10)
+for (i in 1:10){
+        train.index <- sample(1:nrow(OpinionDF.nonZeroVar), 0.6*nrow(OpinionDF.nonZeroVar))
+        test.index <- (1:nrow(OpinionDF.nonZeroVar))[-train.index]
+        
+        knn.pred <- knn(case.data.noClass[train.index, ], case.data.noClass[test.index, ], case.classes[train.index])
+        
+        ### Accuracy
+        #   Confusion Matrix
+        
+        conf.mat <- table("Predictions" = knn.pred, Actual = case.classes[test.index])
+        print(conf.mat)
+        accuracy[i] <- sum(diag(conf.mat)) / length(test.index) *100
+}
+tenFoldCV <- mean(accuracy)
+tenFoldCV
 
-trainData <- nonZeroVarOpinionDF[,1:80]
-trainClasses <- nonZeroVarOpinionDF[,811]
+### Lets try some PCA on the data...
+opinion.pca <- prcomp(case.data.noClass,
+                                center = TRUE,
+                                scale. = TRUE) 
+#summary(opinion.pca) # two PCs for cumulative proportion of >80% 
+opinion.PCAtransformed<-as.data.frame(opinion.pca$x[,1:5])
 
-catFit <- train(trainData, trainClasses,
-                method = "knn",
-                preProcess = c("center", "scale"),
-                tuneLength = 10,
-                trControl = trainControl(method = "cv"))
+case.data.noClass <- opinion.PCAtransformed
+
+accuracy <- rep(1, 10)
+for (i in 1:10){
+        train.index <- sample(1:nrow(opinion.PCAtransformed), 0.6*nrow(opinion.PCAtransformed))
+        test.index <- (1:nrow(opinion.PCAtransformed))[-train.index]
+        
+        knn.pred <- knn(case.data.noClass[train.index, ], case.data.noClass[test.index, ], case.classes[train.index])
+        
+        ### Accuracy
+        #   Confusion Matrix
+        
+        conf.mat <- table("Predictions" = knn.pred, Actual = case.classes[test.index])
+        print(conf.mat)
+        accuracy[i] <- sum(diag(conf.mat)) / length(test.index) *100
+}
+tenFoldCV <- mean(accuracy)
+tenFoldCV

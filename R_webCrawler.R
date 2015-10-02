@@ -31,10 +31,10 @@ writeOpinionLoc <- paste(writeTextLoc, "/Opinion/", sep = "")
 ### Set the file URL after your initial search perameters are entered on the website.
 #       !!! be sure to use the URL that ends in "pgnum=1" !!!  
 #       This can be accomplished by manually going to page #2 and then back to page #1
-QuerreyURL <- "http://caselaw.findlaw.com/summary/search/?query=filters&court=us-9th-circuit&dateFormat=yyyyMMdd&startDate=20140101&endDate=20141231&topic=cs_19&pgnum=1"
+QuerreyURL <- "http://caselaw.findlaw.com/summary/search/?query=filters&court=us-9th-circuit&dateFormat=yyyyMMdd&startDate=20110101&endDate=20141231&topic=cs_19&pgnum=1"
 
 ### MANUALLY Identify the Numbeer of PAGES of search results
-pages <- 21
+pages <- 94
 
 ### Use the page number information to generate a list of all the search result URLs
 QuerreyURL <- gsub("pgnum=1", "pgnum=", QuerreyURL)
@@ -114,13 +114,3 @@ for (i in 1:length(crawlThroughURLs)){
                 write(caseOpinion[i], file = x[i])   
         }
 }
-
-
-
-
-
-
-
-
-
-
