@@ -1,0 +1,158 @@
+# Helping the scum of the earth
+###J. Thatcher
+
+https://jhuria.wordpress.com/2012/07/01/text-mining-in-r/
+
+###Background  
+according to a recent episode of John Oliver's Last Week Tongiht, court appointed attourneys (i.e., Public Defender) are one of the least funded and over worked group in the judicial system.  Some Public Defenders claim they work over 1,000 cases a year, which amounts to over __ cases a day.  In some systems this means that the atturney has literally 7 minutes to review each case.  This means that citizens who cannot afford an attourney (Miranda rigths) and reviece public litigators do not recieve fair representation.  Often times, their clients plead guilty because they have neither the time or resources to fight an incorrect acusation.  the system dearly needs more attourneys, but the funding is not there.  
+
+Some have proposed machine learning as a solution to predict legal outcomes, which could eventually lessen the burdeon on these attourneys ([ref.][1]).  The goal would be to automate the lawyer's thinking processes and determien the proper pathway for each case with the support of a computer.  Unfortunatly, it is clear that science lacks the ability to mimick the complex thought patterns of an attourney.  However, this does not preclude the use of machine learning in law.  In fact, some have proposed that machine learning could be a valuable tool to perform the simpler decision proceses of an attourney in a rapid and accurate way.  For instance, a machine learning model could be used to predict the liklihood of succes or failure in the event of a guilty or not-guilty plea for certain crimes.  
+
+[1]: http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.85.9499&rep=rep1&type=pdf
+
+Of particular interest may be the following problem outined by the [Washington Law Review][2]:  
+
+[2]: https://digital.law.washington.edu/dspace-law/bitstream/handle/1773.1/1321/89WLR0087.pdf
+
+"The ability to make informed and useful predictions about potential legal outcomes and liability is one of the primary skills of lawyering. Lawyers are routinely called upon to make predictions in a variety of legal settings. In a typical scenario, a client may provide the lawyer with a legal problem involving a complex set of facts and goals. A lawyer might employ a combination of judgment, experience, and knowledge of the law to make reasoned predictions about the likelihood of outcomes on particular legal issues or on overall issue of liability, often in contexts of considerable legal and factual uncertainty. On the basis of these predictions and other factors, the lawyer might counsel the client about recommended courses of action."  
+
+In particular I would consider focusing on predicting the legal outocme of a case based on the documentatation provided to the lawer duirng the discovery process.  This would be useful to accurately and quickly allow the publick defender to counsel the client about a recommended courses of action.
+
+###Purpose
+The purpouse is to verify that Machine Learning or Pattern Recognition could be used to reduce the burden of work for a public defender.  To do this, we will attempt to accurately predict the outcome of cases based on their court documents and then identify which content has a significant impact on the outcome of the case.
+
+
+###Data
+The UCI has a database on court cases in Australia that can be used as data to approach this problem. This dataset contains Australian legal cases from the Federal Court of Australia (FCA) from 2006 - 2009.  
+
+```{r eval=FALSE}
+fileURL <- "https://archive.ics.uci.edu/ml/machine-learning-databases/00239/corpus.zip"
+downloadLocationName <- "C:/Users/jeffthatcher/Downloads/corpus.zip"
+
+download.file(fileURL, downloadLocationName)
+unzip(downloadLocationName, exdir = "C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_DataSet")
+```
+
+Let's get started with cleaning the data.  It's in html, and we want to grab the body text and re-format it to text documents for generating a documet-term matrix.  
+
+```{r eval=FALSE}
+setwd("C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_DataSet/corpus")
+library(XML)
+
+### Create a directory to store .txt data
+if(!file.exists("./fulltext/asText")) {
+        dir.create("./fulltext/asText")
+}
+
+
+### Set directory where data will be written
+dir <- "C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_DataSet/corpus/fulltext"
+
+### find files to convert to text
+list <- dir(dir, full.names = TRUE, recursive = FALSE)
+
+###set a directory for writing the text files
+writeTextLoc <- gsub("fulltext", "fulltext/asText", list)
+
+### Load data, remove "catchphrases" developed by previous ML group, and convert to text files
+# This would be too much data if we used it all.  We will only take 1000 cases from the 3,891 total
+doc <- rep(1, (length(list)-2891))
+titles <- rep(1, (length(list)-2891))
+
+for (i in 1:(length(list)-2891)){
+        doc <- htmlTreeParse(list[i], useInternal=TRUE)
+        #Write body as text
+        sentences <- xpathSApply(doc, "//sentences", xmlValue, trim = TRUE)
+        bodyTextLoc <- gsub(".xml", "_sentences.txt", writeTextLoc[i])
+        write(sentences, file = bodyTextLoc)
+        #Capture case titles
+        title.temp <- xpathSApply(doc, "//name", xmlValue, trim = TRUE)
+        titles[i] <- c(title.temp)
+        #titleTextLoc <- gsub(".xml", "_title.txt", writeTextLoc[i])
+        #write(title, file = titleTextLoc)
+}
+rm(doc, i, sentences)
+```
+
+Now we can read the text douments in and create a term-document matrix.  
+
+```{r}
+###Convert into term-document matrix
+library(tm)
+
+### Clean Text Function
+cleanCorpus <- function(corpus) {
+        corpus.tmp <- tm_map(corpus, removePunctuation)
+        corpus.tmp <- tm_map(corpus.tmp, stripWhitespace)
+        corpus.tmp <- tm_map(corpus.tmp, content_transformer(tolower))
+        corpus.tmp <- tm_map(corpus.tmp, removeWords, stopwords("english"))
+        return(corpus.tmp)
+}
+
+textDir <- "C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_DataSet/corpus/fulltext/asText"
+
+corp.raw <- VCorpus(DirSource(directory = textDir), readerControl = list(reader=readPlain))
+corp.raw <- cleanCorpus(corp.raw)
+
+### Build a term document matrix
+corp.dtm <- DocumentTermMatrix(corp.raw)
+
+rm(corp.raw)
+```
+
+
+###Methods  
+Alright, now lets look at some simple descritive stats from the data  
+
+1. We will calculate the word frequencies for our words  
+```{r}
+library(ggplot2)
+### Conver Term Document Matrix Into Data Frame   
+freq <- colSums(as.matrix(corp.dtm))    
+
+wf <- data.frame(word=names(freq), freq=freq)   
+
+p <- ggplot(subset(wf, freq>5000), aes(word, freq)) +
+        geom_bar(stat="identity") + 
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        labs(title = "Frequency of words in wordlist",x="Word", y="Frequency [counts]")
+p   
+```
+2.  Lets look at some clustering to find any obvious categories in the dataset  
+-try a dendrogram first  
+
+```{r}
+### Eliminate Sparse Terms
+dtm.sparse <- removeSparseTerms(corp.dtm, 0.1) # This makes a matrix that is only 20% empty space, maximum.   
+
+### Heirarchical Clustering library(cluster)
+d <- dist(t(dtm.sparse), method="euclidian") 
+fit <- hclust(d=d, method="ward.D2")   
+plot(fit, hang=-1)
+
+```
+-second we will use k-means clustering  
+```{r}
+library(cluster)
+## k-means clustering library(fpc)
+d <- dist(t(dtm.sparse), method="euclidian")   
+kfit <- kmeans(d, 12)   
+clusplot(as.matrix(d), kfit$cluster, color=T, shade=T, labels=3, lines=0)   
+```
+
+```{r}
+findAssocs(corp.dtm, "estate", 0.5) 
+
+df <- as.data.frame(as.matrix(corp.dtm))
+
+patentCases <- subset(df, subset = (df$patent >= 2))
+visaCases <- subset(df, subset = (df$visa >= 2))
+estateCases <- subset(df, subset = (df$estate >= 2))
+
+shortlist<- subset(df, select = c("patented", "15regulation", "visa", "cancel", "estate", "corresponds"))
+
+d <- dist(t(shortlist), method="euclidian") 
+fit <- hclust(d=d, method="ward.D2")   
+plot(fit, hang=-1)
+
+```
