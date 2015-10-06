@@ -1,7 +1,7 @@
 ########################### Webscraper for FindLaw.com  ########################
 ### To do this for all search results we will use the information give from the
 ### search querey found on this website.  After querreying all criminal cases
-### in the 9th district of appeals from Jan 1, 2014 to Dec 31, 2014, We find the 
+### in the 9th district of appeals from Jan 1, 2013 to Dec 31, 2014, We find the 
 ### following information:
 #       * The information shows that the URL for the search is specific, and
 #       * The number of pages of search results are indicated on the page.

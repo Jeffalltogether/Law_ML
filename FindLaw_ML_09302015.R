@@ -9,8 +9,8 @@ library(reshape2)
 library(ggplot2)
 library(plyr)
 library(class)
+library(caret)
 #library(MASS)
-#library(caret)
 
 setwd("C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_DataSet/FindLaw/9thAppeals")
 
@@ -65,6 +65,7 @@ rm(wordCount, wordTotals)
 #   as the highest level of their class heirarchy.
 casesToCategorize <- which(categoryDF$V1 == "Criminal Law & Procedure")
 categoryDF <- categoryDF[casesToCategorize,]
+categoryDF$caseTitle <- rownames(categoryDF)
 
 ### With this, we can define the class of each remaining case
 class <- paste(as.character(categoryDF$V1), as.character(categoryDF$V2), sep=" ")
@@ -95,7 +96,7 @@ Plot1 <- ggplot(class.count, aes(x = class, y = class.caseNum)) +
         geom_bar(colour = "black", stat= "identity", position = "dodge") + 
         scale_fill_brewer(palette="Pastel1") + 
         theme(axis.text.x = element_text(angle=60, hjust=1)) + 
-        ggtitle("Classes of criminal cases for ML Prediction\nExtracted from FindLaw.com search \nTotal number of cases is 172") + 
+        ggtitle("Classes of criminal cases for ML Prediction\nExtracted from FindLaw.com search \nTotal number of cases is __") + 
         ylab("Number of Cases")
 Plot1
 
@@ -138,66 +139,35 @@ rm(corpRaw)
 opinionDF <- as.data.frame(as.matrix(corpDTM))
 
 ### Now we can pull only the cases that begin with the criminal law category
-opinionDF <- opinionDF[casesToCategorize,]
+#opinionDF <- opinionDF[, %in% categoryDF$caseTitle]
+rownames(opinionDF) <- list.files(opinionDocs)
+opinionDF <- opinionDF[which(rownames(opinionDF) %in% rownames(categoryDF)),]
 
 rm(corpDTM)
-
-### Identify words in document that are Common and Frequent.
-#       * Criteria for Common: Present in nearly each document
-#       * Criteria for Frequent: occur in all documents more than 
-#         50 * total number of documents
-
-Common <- function(x){
-        if(is.numeric(x)){sum(as.integer(x > 0),na.rm = 1)}
-        else{x = NA}
-}
-
-Frequent <- function(x){
-        if(is.numeric(x)){sum(x,na.rm = 1)}
-        else{"NA"}
-}
-
-opinionDF.commonTotals <- colwise(Common)(opinionDF)
-opinionDF.freqTotals <- colwise(Frequent)(opinionDF)
-
-### Remove Common Terms
-commonWords <- which(opinionDF.commonTotals != "NA" & opinionDF.commonTotals >= (length(class)-4*length(class.unique)))
-
-### Remove Frequent Terms
-frequentWords <- which(opinionDF.freqTotals != "NA" & opinionDF.freqTotals >= length(class)/5)
-
-### Remove Sparse Terms
-sparseWords <- which(opinionDF.freqTotals != "NA" & opinionDF.freqTotals <= 1)
-
-opinionDF.clean <- opinionDF[,-commonWords]
-opinionDF.clean <- opinionDF.clean[,-frequentWords]
-opinionDF.clean <- opinionDF.clean[,-sparseWords]
-
-rm(commonWords, frequentWords, sparseWords, opinionDF, opinionDF.commonTotals, opinionDF.freqTotals)
 
 ### Now let's apply some prediction
 ### First, we will add the class label to each case and remove the case types 
 ### that are not represented enought to train a classifier
-opinionDF.clean$cla55 <- class.abbreviations
+opinionDF$cla55 <- categoryDF$class[which(rownames(categoryDF) %in% rownames(opinionDF))]
 
 #   Now a quick check to see that the correct class was assigned to each case
-ifelse((rownames(categoryDF) == rownames(opinionDF.clean)) != TRUE,
+ifelse(((rownames(categoryDF[which(rownames(categoryDF) %in% rownames(opinionDF)),])) == rownames(opinionDF)) != TRUE,
         "case and class do not match", "case and class match")
 
 #   Here we can remove those under-represented classes
-class.toKeep <- c("CLPHC", "CLPN", "CLPS", "CrmnlLwPrcdrEv", "CrmnlLwPrcdrImL")
-opinionDF.clean <- opinionDF.clean[which(opinionDF.clean$cla55 %in% class.toKeep), ]
+class.toKeep <- c("CLPHC", "CLPS", "CrmnlLwPrcdrEv", "CrmnlLwPrcdrImL")
+opinionDF <- opinionDF[which(opinionDF$cla55 %in% class.toKeep), ]
 
 
 ### Next, we will use the holdout method to generate our train and test set
 ###############https://www.youtube.com/watch?v=j1V2McKbkLo###################
-case.classes <- opinionDF.clean[,"cla55"]
-case.data.noClass <- opinionDF.clean[,-which(colnames(opinionDF.clean)=="cla55")]
+case.classes <- opinionDF[,"cla55"]
+case.data.noClass <- opinionDF[,-which(colnames(opinionDF)=="cla55")]
 
 accuracy <- rep(1, 10)
-for (i in 1:10){
-        train.index <- sample(1:nrow(opinionDF.clean), 0.6*nrow(opinionDF.clean))
-        test.index <- (1:nrow(opinionDF.clean))[-train.index]
+for (i in 1:100){
+        train.index <- sample(1:nrow(opinionDF), 0.6*nrow(opinionDF))
+        test.index <- (1:nrow(opinionDF))[-train.index]
         
         knn.pred <- knn(case.data.noClass[train.index, ], case.data.noClass[test.index, ], case.classes[train.index])
         
@@ -212,16 +182,16 @@ tenFoldCV <- mean(accuracy)
 tenFoldCV
 
 #  Next we can try after removig the Near Zero Variance Terms
-x <- nearZeroVar(opinionDF.clean, saveMetrics = TRUE)
+x <- nearZeroVar(opinionDF, saveMetrics = TRUE)
 x <- as.data.frame(x)
 nonZeroVarWords <- rownames(x[x[,"nzv"] <=0, ])
-OpinionDF.nonZeroVar <- opinionDF.clean[,which(colnames(opinionDF.clean) %in% nonZeroVarWords)]
+OpinionDF.nonZeroVar <- opinionDF[,which(colnames(opinionDF) %in% nonZeroVarWords)]
 
 case.classes <- OpinionDF.nonZeroVar[,"cla55"]
 case.data.noClass <- OpinionDF.nonZeroVar[,-which(colnames(OpinionDF.nonZeroVar)=="cla55")]
 
 accuracy <- rep(1, 10)
-for (i in 1:10){
+for (i in 1:100){
         train.index <- sample(1:nrow(OpinionDF.nonZeroVar), 0.6*nrow(OpinionDF.nonZeroVar))
         test.index <- (1:nrow(OpinionDF.nonZeroVar))[-train.index]
         
@@ -242,14 +212,43 @@ opinion.pca <- prcomp(case.data.noClass,
                                 center = TRUE,
                                 scale. = TRUE) 
 #summary(opinion.pca) # two PCs for cumulative proportion of >80% 
-opinion.PCAtransformed<-as.data.frame(opinion.pca$x[,1:5])
+opinion.PCAtransformed<-as.data.frame(opinion.pca$x[,1:3])
 
 case.data.noClass <- opinion.PCAtransformed
 
 accuracy <- rep(1, 10)
-for (i in 1:10){
+for (i in 1:100){
         train.index <- sample(1:nrow(opinion.PCAtransformed), 0.6*nrow(opinion.PCAtransformed))
         test.index <- (1:nrow(opinion.PCAtransformed))[-train.index]
+        
+        knn.pred <- knn(case.data.noClass[train.index, ], case.data.noClass[test.index, ], case.classes[train.index])
+        
+        ### Accuracy
+        #   Confusion Matrix
+        
+        conf.mat <- table("Predictions" = knn.pred, Actual = case.classes[test.index])
+        print(conf.mat)
+        accuracy[i] <- sum(diag(conf.mat)) / length(test.index) *100
+}
+tenFoldCV <- mean(accuracy)
+tenFoldCV
+
+# So none of these simple-to-apply techniques made andy imporvements. This is a point
+# where we might look at other aspects of the machine learning paradime, startinf with
+# features. We created a list of words that are intuitively more important in assisting
+# the categorization of these documents.
+
+supervisedWords <- read.csv("C:/Users/jeffthatcher/Cloud Drive/RRepos/Law_ML/supervisedWords.csv", header=FALSE)
+
+opinionDF.supervisedWords <- opinionDF[,which(colnames(opinionDF) %in% as.matrix(supervisedWords))]
+
+case.classes <- opinionDF.supervisedWords[,"cla55"]
+case.data.noClass <- opinionDF.supervisedWords[,-which(colnames(opinionDF.supervisedWords)=="cla55")]
+
+accuracy <- rep(1, 10)
+for (i in 1:100){
+        train.index <- sample(1:nrow(opinionDF.supervisedWords), 0.6*nrow(opinionDF.supervisedWords))
+        test.index <- (1:nrow(opinionDF.supervisedWords))[-train.index]
         
         knn.pred <- knn(case.data.noClass[train.index, ], case.data.noClass[test.index, ], case.classes[train.index])
         

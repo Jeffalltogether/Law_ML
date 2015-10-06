@@ -1,4 +1,4 @@
-# Helping the scum of the earth
+# Can Machine Learning Assist Public Defenders?
 ###J. Thatcher
 
 https://jhuria.wordpress.com/2012/07/01/text-mining-in-r/
